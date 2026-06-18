@@ -1,0 +1,26 @@
+description: >
+  Deploy a Lambda function using OIDC authentication.
+  The auth parameter accepts any aws-cli/setup configuration.
+  Deploy markers are emitted to the CircleCI Deploys UI by default.
+
+usage:
+  version: 2.1
+
+  orbs:
+    aws-cli: circleci/aws-cli@5.1.1
+    aws-lambda: circleci/aws-lambda@1.0.0
+
+  workflows:
+    deploy-lambda:
+      jobs:
+        - aws-lambda/update-lambda-function:
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<<pipeline.git.tag>>.zip
+            function_name: my-lambda-function
+            publish: true
+            context: aws

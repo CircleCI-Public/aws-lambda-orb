@@ -1,27 +1,24 @@
 description: >
   Uploads a deployment ZIP to S3 using the aws-s3 orb, then calls
   `aws lambda update-function-code` to deploy the new code to a Lambda function.
-  AWS credentials are configured via the aws-cli orb (supports both static
-  IAM keys and OIDC-based role assumption).
+  Authentication is handled by the caller via the `auth` steps parameter —
+  pass `aws-cli/setup` with your preferred method (OIDC, static keys, etc.),
+  or omit it entirely if credentials are already present in the environment.
   Optionally emits CircleCI deploy markers via the deploys orb.
 
-executor:
-  name: <<parameters.executor>>
-  tag: <<parameters.executor_image_tag>>
+executor: default
 
 parameters:
-  # ── Executor ────────────────────────────────────────────────────────────────
-  executor:
-    description: The executor to use for this job.
-    type: string
-    default: default
-
-  executor_image_tag:
+  # ── Authentication ───────────────────────────────────────────────────────────
+  auth:
     description: >
-      Image tag passed to the executor. Ignored when a custom executor is
-      supplied.
-    type: string
-    default: current
+      Authentication steps used to configure AWS credentials before the deploy.
+      Import the aws-cli orb and provide aws-cli/setup with your preferred method
+      (OIDC role assumption, static keys, etc.). If omitted, the job will rely on
+      credentials already present in the environment (e.g. an IAM instance profile
+      or environment variables set in a prior step or context).
+    type: steps
+    default: []
 
   # ── Workflow control ────────────────────────────────────────────────────────
   checkout:
@@ -30,44 +27,6 @@ parameters:
       when using `attach_workspace` in pre-steps to bring in a pre-built artifact.
     type: boolean
     default: true
-
-  # ── AWS authentication (passed through to aws-cli/setup) ───────────────────
-  profile_name:
-    description: AWS CLI profile name to create and use.
-    type: string
-    default: "default"
-
-  aws_access_key_id:
-    description: >
-      AWS access key ID. Defaults to $AWS_ACCESS_KEY_ID.
-      Ignored when role_arn is set (OIDC flow).
-    type: string
-    default: $AWS_ACCESS_KEY_ID
-
-  aws_secret_access_key:
-    description: >
-      AWS secret access key. Defaults to $AWS_SECRET_ACCESS_KEY.
-      Ignored when role_arn is set (OIDC flow).
-    type: string
-    default: $AWS_SECRET_ACCESS_KEY
-
-  region:
-    description: AWS region. Defaults to $AWS_DEFAULT_REGION.
-    type: string
-    default: ${AWS_DEFAULT_REGION}
-
-  role_arn:
-    description: >
-      IAM role ARN to assume via OIDC. When set together with
-      role_session_name, the aws-cli orb will use web identity auth instead
-      of static keys.
-    type: string
-    default: ""
-
-  role_session_name:
-    description: Name for the assumed-role session (used with OIDC auth).
-    type: string
-    default: ${CIRCLE_JOB}
 
   # ── S3 upload ───────────────────────────────────────────────────────────────
   source_zip_file:
@@ -144,13 +103,7 @@ steps:
       steps:
         - checkout
 
-  - aws-cli/setup:
-      profile_name: <<parameters.profile_name>>
-      aws_access_key_id: <<parameters.aws_access_key_id>>
-      aws_secret_access_key: <<parameters.aws_secret_access_key>>
-      region: <<parameters.region>>
-      role_arn: <<parameters.role_arn>>
-      role_session_name: <<parameters.role_session_name>>
+  - steps: <<parameters.auth>>
 
   - when:
       condition:
@@ -175,7 +128,6 @@ steps:
   - aws-s3/copy:
       from: <<parameters.source_zip_file>>
       to: s3://<<parameters.s3_bucket>>/<<parameters.s3_key>>
-      profile_name: <<parameters.profile_name>>
       arguments: <<parameters.s3_copy_arguments>>
 
   - run:
@@ -184,7 +136,6 @@ steps:
         PARAM_FUNCTION_NAME: <<parameters.function_name>>
         PARAM_S3_BUCKET: <<parameters.s3_bucket>>
         PARAM_S3_KEY: <<parameters.s3_key>>
-        PARAM_PROFILE_NAME: <<parameters.profile_name>>
         PARAM_PUBLISH: <<parameters.publish>>
         PARAM_QUALIFIER: <<parameters.qualifier>>
       command: <<include(scripts/update_function_code.sh)>>

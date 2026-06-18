@@ -2,7 +2,6 @@
 FUNCTION_NAME=$(circleci env subst "${PARAM_FUNCTION_NAME}")
 S3_BUCKET=$(circleci env subst "${PARAM_S3_BUCKET}")
 S3_KEY=$(circleci env subst "${PARAM_S3_KEY}")
-PROFILE_NAME=$(circleci env subst "${PARAM_PROFILE_NAME}")
 
 ARGS=(
     lambda update-function-code
@@ -10,10 +9,6 @@ ARGS=(
     --s3-bucket "${S3_BUCKET}"
     --s3-key "${S3_KEY}"
 )
-
-if [ -n "${PROFILE_NAME}" ] && [ "${PROFILE_NAME}" != "default" ]; then
-    ARGS+=(--profile "${PROFILE_NAME}")
-fi
 
 if [ "${PARAM_PUBLISH}" == "1" ]; then
     ARGS+=(--publish)

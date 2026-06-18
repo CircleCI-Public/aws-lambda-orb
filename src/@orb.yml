@@ -11,6 +11,5 @@ display:
   source_url: "https://github.com/rchen-cci/aws-lambda-orb"
 
 orbs:
-  aws-cli: circleci/aws-cli@5.1.1
   aws-s3: circleci/aws-s3@4.1
   deploys: circleci/deploys@1.0

@@ -1,18 +1,14 @@
 version: 2.1
 orbs:
-  # Your orb will be automatically injected here during the pipeline.
-  # Reference your orb's jobs and commands below as they will exist when built.
   orb-tools: circleci/orb-tools@12.3
+  aws-cli: circleci/aws-cli@5.1.1
   # The orb definition is intentionally not included here. It will be injected into the pipeline.
   aws-lambda: {}
 
-# Use this tag to ensure test jobs always run,
-# even though the downstream publish job will only run on release tags.
 filters: &filters
   tags:
     only: /.*/
 
-# Filter for release tags.
 release-filters: &release-filters
   branches:
     ignore: /.*/
@@ -20,36 +16,145 @@ release-filters: &release-filters
     only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
 
 jobs:
-  # Validate that the orb packs cleanly and parameters are well-formed.
-  # Full integration tests (actual AWS calls) are run separately with real
-  # credentials; they are not part of the open-source CI pipeline.
-  integration-test-params:
+  # ── Step 1 ──────────────────────────────────────────────────────────────────
+  # Build a minimal Python Lambda handler ZIP and ensure the test function
+  # exists in AWS (creates it on first run, no-ops on subsequent runs).
+  # Persists function.zip to the workspace for the deploy job.
+  create-test-fixtures:
     docker:
       - image: cimg/base:current
     steps:
-      - checkout
-      # Verify the orb was injected correctly by checking the job exists.
+      - aws-cli/setup:
+          role_arn: $AWS_ROLE_ARN
+          region: $AWS_DEFAULT_REGION
+
       - run:
-          name: Verify update-lambda-function job is present in packed orb
+          name: Create test Lambda ZIP
           command: |
-            echo "Orb pack validation — job existence check passed."
+            mkdir -p /tmp/lambda-test
+            cat > /tmp/lambda-test/index.py \<<'HANDLER'
+            import json
+
+            def handler(event, context):
+                return {
+                    "statusCode": 200,
+                    "body": json.dumps({"message": "Hello from aws-lambda-orb integration test!"})
+                }
+            HANDLER
+            cd /tmp/lambda-test
+            zip -j function.zip index.py
+            echo "Created ZIP: $(du -sh function.zip)"
+
+      - run:
+          name: Ensure test Lambda function exists
+          command: |
+            FUNCTION_NAME="${AWS_LAMBDA_TEST_FUNCTION_NAME}"
+            REGION="${AWS_DEFAULT_REGION}"
+
+            if aws lambda get-function --function-name "${FUNCTION_NAME}" --region "${REGION}" > /dev/null 2>&1; then
+              echo "Function '${FUNCTION_NAME}' already exists — skipping creation."
+            else
+              echo "Creating function '${FUNCTION_NAME}'..."
+              aws lambda create-function \
+                --function-name "${FUNCTION_NAME}" \
+                --runtime python3.12 \
+                --role "${AWS_LAMBDA_EXECUTION_ROLE_ARN}" \
+                --handler index.handler \
+                --zip-file fileb:///tmp/lambda-test/function.zip \
+                --region "${REGION}"
+              echo "Waiting for function to become active..."
+              aws lambda wait function-active \
+                --function-name "${FUNCTION_NAME}" \
+                --region "${REGION}"
+            fi
+
+      - persist_to_workspace:
+          root: /tmp/lambda-test
+          paths:
+            - function.zip
+
+  # ── Step 3 ──────────────────────────────────────────────────────────────────
+  # Invoke the Lambda function and assert the response matches the handler
+  # code deployed in step 2 (the aws-lambda/update-lambda-function job).
+  verify-lambda-update:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - aws-cli/setup:
+          role_arn: $AWS_ROLE_ARN
+          region: $AWS_DEFAULT_REGION
+
+      - run:
+          name: Wait for function update to complete
+          command: |
+            aws lambda wait function-updated \
+              --function-name "${AWS_LAMBDA_TEST_FUNCTION_NAME}" \
+              --region "${AWS_DEFAULT_REGION}"
+
+      - run:
+          name: Invoke Lambda and verify response
+          command: |
+            aws lambda invoke \
+              --function-name "${AWS_LAMBDA_TEST_FUNCTION_NAME}" \
+              --region "${AWS_DEFAULT_REGION}" \
+              --log-type Tail \
+              /tmp/response.json
+
+            echo "--- Response ---"
+            cat /tmp/response.json
+
+            if grep -q '"statusCode": 200' /tmp/response.json || grep -q '"statusCode":200' /tmp/response.json; then
+              echo "Integration test passed — Lambda returned HTTP 200."
+            else
+              echo "Integration test FAILED — unexpected response body."
+              exit 1
+            fi
 
 workflows:
   test-deploy:
     jobs:
-      # Make sure to include "filters: *filters" in every test job you want to run as part of your deployment.
-      - integration-test-params:
+      # ── Step 1: build artifact + ensure function exists ─────────────────────
+      - create-test-fixtures:
+          context: orb-testing-aws
           filters: *filters
-      # The orb must be re-packed for publishing, and saved to the workspace.
+
+      # ── Step 2: run the orb job under test ──────────────────────────────────
+      - aws-lambda/update-lambda-function:
+          name: integration-test-update-lambda
+          pre-steps:
+            - attach_workspace:
+                at: .
+          checkout: false
+          auth:
+            - aws-cli/setup:
+                role_arn: $AWS_ROLE_ARN
+                region: $AWS_DEFAULT_REGION
+          source_zip_file: function.zip
+          s3_bucket: $AWS_LAMBDA_TEST_S3_BUCKET
+          s3_key: integration-test/function.zip
+          function_name: $AWS_LAMBDA_TEST_FUNCTION_NAME
+          deploy_markers_mode: "OFF"
+          requires:
+            - create-test-fixtures
+          context: orb-testing-aws
+          filters: *filters
+
+      # ── Step 3: verify the deployed function ────────────────────────────────
+      - verify-lambda-update:
+          requires:
+            - integration-test-update-lambda
+          context: orb-testing-aws
+          filters: *filters
+
+      # ── Publish (release tags only) ──────────────────────────────────────────
       - orb-tools/pack:
           filters: *release-filters
       - orb-tools/publish:
           orb_name: circleci/aws-lambda
           vcs_type: << pipeline.project.type >>
           pub_type: production
-          # Ensure this job requires all test jobs and the pack job.
           requires:
             - orb-tools/pack
-            - integration-test-params
+            - verify-lambda-update
           context: orb-publishing
           filters: *release-filters
