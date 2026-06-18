@@ -1,0 +1,16 @@
+version: 2.1
+
+description: >
+  Deploy and manage AWS Lambda functions via CircleCI.
+  Uploads your deployment package to S3 using the aws-s3 orb, then
+  triggers a Lambda function code update via the AWS CLI.
+  Supports both static IAM credentials and OIDC-based role assumption.
+
+display:
+  home_url: "https://aws.amazon.com/lambda/"
+  source_url: "https://github.com/rchen-cci/aws-lambda-orb"
+
+orbs:
+  aws-cli: circleci/aws-cli@5.1.1
+  aws-s3: circleci/aws-s3@4.1
+  deploys: circleci/deploys@1.0

@@ -1,0 +1,27 @@
+description: >
+  Deploy a Lambda function using OIDC authentication (recommended).
+  The job uploads a local ZIP file to S3 and then calls
+  `aws lambda update-function-code` to push the new code to the function.
+
+usage:
+  version: 2.1
+
+  orbs:
+    aws-lambda: circleci/aws-lambda@1.0.0
+
+  workflows:
+    deploy-lambda:
+      jobs:
+        - aws-lambda/update-lambda-function:
+            # --- Auth (OIDC) ---
+            role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+            region: us-east-1
+            # --- S3 upload ---
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<<pipeline.git.tag>>.zip
+            # --- Lambda update ---
+            function_name: my-lambda-function
+            publish: true
+            # Require AWS context
+            context: aws-oidc
