@@ -8,7 +8,7 @@ description: >
 
 display:
   home_url: "https://aws.amazon.com/lambda/"
-  source_url: "https://github.com/rchen-cci/aws-lambda-orb"
+  source_url: "https://github.com/CircleCI-Public/aws-lambda-orb"
 
 orbs:
   aws-s3: circleci/aws-s3@4.1

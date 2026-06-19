@@ -1,6 +1,6 @@
 # aws-lambda Orb
 
-[CircleCI Build Status](https://circleci.com/gh/rchen-cci/aws-lambda-orb) [CircleCI Orb Version](https://circleci.com/developer/orbs/orb/circleci/aws-lambda) [GitHub License](https://raw.githubusercontent.com/rchen-cci/aws-lambda-orb/master/LICENSE) [CircleCI Community](https://discuss.circleci.com/c/ecosystem/orbs)
+[![CircleCI Build Status](https://circleci.com/gh/CircleCI-Public/aws-lambda-orb.svg?style=shield "CircleCI Build Status")](https://circleci.com/gh/CircleCI-Public/aws-lambda-orb) [![CircleCI Orb Version](https://badges.circleci.com/orbs/circleci/aws-lambda.svg)](https://circleci.com/developer/orbs/orb/circleci/aws-lambda) [![GitHub License](https://img.shields.io/badge/license-MIT-lightgrey.svg)](https://raw.githubusercontent.com/CircleCI-Public/aws-lambda-orb/master/LICENSE) [![CircleCI Community](https://img.shields.io/badge/community-CircleCI%20Discuss-343434.svg)](https://discuss.circleci.com/c/ecosystem/orbs)
 
 Deploy code to AWS Lambda functions from CircleCI. Uploads your deployment package to S3, then updates the Lambda function via the AWS CLI.
 
@@ -14,7 +14,7 @@ Deploy code to AWS Lambda functions from CircleCI. Uploads your deployment packa
 
 ### How to Contribute
 
-We welcome [issues](https://github.com/rchen-cci/aws-lambda-orb/issues) to and [pull requests](https://github.com/rchen-cci/aws-lambda-orb/pulls) against this repository!
+We welcome [issues](https://github.com/CircleCI-Public/aws-lambda-orb/issues) to and [pull requests](https://github.com/CircleCI-Public/aws-lambda-orb/pulls) against this repository!
 
 ### Development Orbs
 
