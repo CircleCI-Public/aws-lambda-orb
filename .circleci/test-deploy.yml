@@ -115,7 +115,6 @@ workflows:
     jobs:
       # ── Step 1: build artifact + ensure function exists ─────────────────────
       - create-test-fixtures:
-          context: orb-testing-aws
           filters: *filters
 
       # ── Step 2: run the orb job under test ──────────────────────────────────
@@ -136,14 +135,12 @@ workflows:
           deploy_markers_mode: "OFF"
           requires:
             - create-test-fixtures
-          context: orb-testing-aws
           filters: *filters
 
       # ── Step 3: verify the deployed function ────────────────────────────────
       - verify-lambda-update:
           requires:
             - integration-test-update-lambda
-          context: orb-testing-aws
           filters: *filters
 
       # ── Publish (release tags only) ──────────────────────────────────────────
@@ -156,5 +153,5 @@ workflows:
           requires:
             - orb-tools/pack
             - verify-lambda-update
-          context: orb-publishing
+          context: orb-publisher
           filters: *release-filters
