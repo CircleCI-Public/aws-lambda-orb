@@ -75,7 +75,7 @@ jobs:
 
   # ── Step 3 ──────────────────────────────────────────────────────────────────
   # Invoke the Lambda function and assert the response matches the handler
-  # code deployed in step 2 (the aws-lambda/update-lambda-function job).
+  # code deployed in step 2 (the aws-lambda/update_lambda_function job).
   verify-lambda-update:
     docker:
       - image: cimg/base:current
@@ -118,7 +118,7 @@ workflows:
           filters: *filters
 
       # ── Step 2: run the orb job under test ──────────────────────────────────
-      - aws-lambda/update-lambda-function:
+      - aws-lambda/update_lambda_function:
           name: integration-test-update-lambda
           pre-steps:
             - attach_workspace:

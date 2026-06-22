@@ -1,6 +1,6 @@
 description: >
   A cimg/base Docker image. Install the AWS CLI via the auth parameter
-  of the update-lambda-function job (e.g. using aws-cli/setup).
+  of the update_lambda_function job (e.g. using aws-cli/setup).
 docker:
   - image: cimg/base:<<parameters.tag>>
 parameters:

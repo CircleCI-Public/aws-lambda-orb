@@ -26,7 +26,7 @@ usage:
       jobs:
 
         # Default: full deploy marker lifecycle (PLAN_AND_UPDATE)
-        - aws-lambda/update-lambda-function:
+        - aws-lambda/update_lambda_function:
             name: deploy-production
             auth:
               - aws-cli/setup:
@@ -39,7 +39,7 @@ usage:
             publish: true
 
         # Log only: single event recorded after a successful deploy
-        - aws-lambda/update-lambda-function:
+        - aws-lambda/update_lambda_function:
             name: deploy-staging
             auth:
               - aws-cli/setup:
@@ -52,7 +52,7 @@ usage:
             deploy_markers_mode: LOG
 
         # Plan only: marker created before deploy; caller manages status updates
-        - aws-lambda/update-lambda-function:
+        - aws-lambda/update_lambda_function:
             name: deploy-with-custom-marker
             auth:
               - aws-cli/setup:
@@ -66,7 +66,7 @@ usage:
             deploy_markers_deploy_name: my-lambda-deploy
 
         # Off: no deploy markers (e.g. automated rollbacks or non-prod)
-        - aws-lambda/update-lambda-function:
+        - aws-lambda/update_lambda_function:
             name: deploy-dev
             auth:
               - aws-cli/setup:
