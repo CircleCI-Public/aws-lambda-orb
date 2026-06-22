@@ -32,7 +32,7 @@ jobs:
           name: Create test Lambda ZIP
           command: |
             mkdir -p /tmp/lambda-test
-            cat > /tmp/lambda-test/index.py \<<'HANDLER'
+            cat > /tmp/lambda-test/lambda_function.py \<<'HANDLER'
             import json
 
             def handler(event, context):
@@ -42,7 +42,7 @@ jobs:
                 }
             HANDLER
             cd /tmp/lambda-test
-            zip -j function.zip index.py
+            zip -j function.zip lambda_function.py
             echo "Created ZIP: $(du -sh function.zip)"
 
       - run:
@@ -59,7 +59,7 @@ jobs:
                 --function-name "${FUNCTION_NAME}" \
                 --runtime python3.12 \
                 --role "${AWS_LAMBDA_EXECUTION_ROLE_ARN}" \
-                --handler index.handler \
+                --handler lambda_function.handler \
                 --zip-file fileb:///tmp/lambda-test/function.zip \
                 --region "${REGION}"
               echo "Waiting for function to become active..."
