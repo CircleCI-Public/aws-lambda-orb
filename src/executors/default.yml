@@ -1,0 +1,12 @@
+description: >
+  A cimg/base Docker image. Install the AWS CLI via the auth parameter
+  of the update_lambda_function job (e.g. using aws-cli/setup).
+docker:
+  - image: cimg/base:<<parameters.tag>>
+parameters:
+  tag:
+    default: current
+    description: >
+      Pick a specific cimg/base image tag:
+      https://hub.docker.com/r/cimg/base/tags
+    type: string

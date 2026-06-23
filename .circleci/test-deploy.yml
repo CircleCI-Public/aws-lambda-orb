@@ -1,0 +1,157 @@
+version: 2.1
+orbs:
+  orb-tools: circleci/orb-tools@12.3
+  aws-cli: circleci/aws-cli@5.1.1
+  # The orb definition is intentionally not included here. It will be injected into the pipeline.
+  aws-lambda: {}
+
+filters: &filters
+  tags:
+    only: /.*/
+
+release-filters: &release-filters
+  branches:
+    ignore: /.*/
+  tags:
+    only: /^v[0-9]+\.[0-9]+\.[0-9]+$/
+
+jobs:
+  # ── Step 1 ──────────────────────────────────────────────────────────────────
+  # Build a minimal Python Lambda handler ZIP and ensure the test function
+  # exists in AWS (creates it on first run, no-ops on subsequent runs).
+  # Persists function.zip to the workspace for the deploy job.
+  create-test-fixtures:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - aws-cli/setup:
+          role_arn: $AWS_ROLE_ARN
+          region: $AWS_DEFAULT_REGION
+
+      - run:
+          name: Create test Lambda ZIP
+          command: |
+            mkdir -p /tmp/lambda-test
+            cat > /tmp/lambda-test/lambda_function.py \<<'HANDLER'
+            import json
+
+            def lambda_handler(event, context):
+                return {
+                    "statusCode": 200,
+                    "body": json.dumps({"message": "Hello from aws-lambda-orb integration test!"})
+                }
+            HANDLER
+            cd /tmp/lambda-test
+            zip -j function.zip lambda_function.py
+            echo "Created ZIP: $(du -sh function.zip)"
+
+      - run:
+          name: Ensure test Lambda function exists
+          command: |
+            FUNCTION_NAME="${AWS_LAMBDA_TEST_FUNCTION_NAME}"
+            REGION="${AWS_DEFAULT_REGION}"
+
+            if aws lambda get-function --function-name "${FUNCTION_NAME}" --region "${REGION}" > /dev/null 2>&1; then
+              echo "Function '${FUNCTION_NAME}' already exists — skipping creation."
+            else
+              echo "Creating function '${FUNCTION_NAME}'..."
+              aws lambda create-function \
+                --function-name "${FUNCTION_NAME}" \
+                --runtime python3.12 \
+                --role "${AWS_LAMBDA_EXECUTION_ROLE_ARN}" \
+                --handler lambda_function.lambda_handler \
+                --zip-file fileb:///tmp/lambda-test/function.zip \
+                --region "${REGION}"
+              echo "Waiting for function to become active..."
+              aws lambda wait function-active \
+                --function-name "${FUNCTION_NAME}" \
+                --region "${REGION}"
+            fi
+
+      - persist_to_workspace:
+          root: /tmp/lambda-test
+          paths:
+            - function.zip
+
+  # ── Step 3 ──────────────────────────────────────────────────────────────────
+  # Invoke the Lambda function and assert the response matches the handler
+  # code deployed in step 2 (the aws-lambda/update_lambda_function job).
+  verify-lambda-update:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - aws-cli/setup:
+          role_arn: $AWS_ROLE_ARN
+          region: $AWS_DEFAULT_REGION
+
+      - run:
+          name: Wait for function update to complete
+          command: |
+            aws lambda wait function-updated \
+              --function-name "${AWS_LAMBDA_TEST_FUNCTION_NAME}" \
+              --region "${AWS_DEFAULT_REGION}"
+
+      - run:
+          name: Invoke Lambda and verify response
+          command: |
+            aws lambda invoke \
+              --function-name "${AWS_LAMBDA_TEST_FUNCTION_NAME}" \
+              --region "${AWS_DEFAULT_REGION}" \
+              --log-type Tail \
+              /tmp/response.json
+
+            echo "--- Response ---"
+            cat /tmp/response.json
+
+            if grep -q '"statusCode": 200' /tmp/response.json || grep -q '"statusCode":200' /tmp/response.json; then
+              echo "Integration test passed — Lambda returned HTTP 200."
+            else
+              echo "Integration test FAILED — unexpected response body."
+              exit 1
+            fi
+
+workflows:
+  test-deploy:
+    jobs:
+      # ── Step 1: build artifact + ensure function exists ─────────────────────
+      - create-test-fixtures:
+          filters: *filters
+
+      # ── Step 2: run the orb job under test ──────────────────────────────────
+      - aws-lambda/update_lambda_function:
+          name: integration-test-update-lambda
+          pre-steps:
+            - attach_workspace:
+                at: .
+          checkout: false
+          auth:
+            - aws-cli/setup:
+                role_arn: $AWS_ROLE_ARN
+                region: $AWS_DEFAULT_REGION
+          source_zip_file: function.zip
+          s3_bucket: $AWS_LAMBDA_TEST_S3_BUCKET
+          s3_key: integration-test/function.zip
+          function_name: $AWS_LAMBDA_TEST_FUNCTION_NAME
+          deploy_markers_mode: "OFF"
+          requires:
+            - create-test-fixtures
+          filters: *filters
+
+      # ── Step 3: verify the deployed function ────────────────────────────────
+      - verify-lambda-update:
+          requires:
+            - integration-test-update-lambda
+          filters: *filters
+
+      # ── Publish (release tags only) ──────────────────────────────────────────
+      - orb-tools/pack:
+          filters: *release-filters
+      - orb-tools/publish:
+          orb_name: circleci/aws-lambda
+          vcs_type: << pipeline.project.type >>
+          pub_type: production
+          requires:
+            - orb-tools/pack
+            - verify-lambda-update
+          context: orb-publisher
+          filters: *release-filters

@@ -1,0 +1,162 @@
+description: >
+  Uploads a deployment ZIP to S3 using the aws-s3 orb, then calls
+  `aws lambda update-function-code` to deploy the new code to a Lambda function.
+  Authentication is handled by the caller via the `auth` steps parameter —
+  pass `aws-cli/setup` with your preferred method (OIDC, static keys, etc.),
+  or omit it entirely if credentials are already present in the environment.
+  Optionally emits CircleCI deploy markers via the deploys orb.
+
+executor: default
+
+parameters:
+  # ── Authentication ───────────────────────────────────────────────────────────
+  auth:
+    description: >
+      Authentication steps used to configure AWS credentials before the deploy.
+      Import the aws-cli orb and provide aws-cli/setup with your preferred method
+      (OIDC role assumption, static keys, etc.). If omitted, the job will rely on
+      credentials already present in the environment (e.g. an IAM instance profile
+      or environment variables set in a prior step or context).
+    type: steps
+    default: []
+
+  # ── Workflow control ────────────────────────────────────────────────────────
+  checkout:
+    description: >
+      Whether to check out source code at the start of the job. Set to false
+      when using `attach_workspace` in pre-steps to bring in a pre-built artifact.
+    type: boolean
+    default: true
+
+  # ── S3 upload ───────────────────────────────────────────────────────────────
+  source_zip_file:
+    description: Local path to the deployment ZIP file to upload to S3.
+    type: string
+    default: function.zip
+
+  s3_bucket:
+    description: Name of the S3 bucket that will hold the deployment package.
+    type: string
+
+  s3_key:
+    description: >
+      S3 object key for the deployment package (e.g. my-function/v1.0.0.zip).
+    type: string
+
+  s3_copy_arguments:
+    description: >
+      Additional arguments forwarded to `aws s3 cp` (e.g. --sse aws:kms).
+    type: string
+    default: ""
+
+  # ── Lambda update ───────────────────────────────────────────────────────────
+  function_name:
+    description: >
+      The name, ARN, or partial ARN of the Lambda function to update
+      (e.g. my-function or arn:aws:lambda:us-east-1:123456789012:function:my-function).
+    type: string
+
+  publish:
+    description: >
+      When true, publishes a new numbered Lambda version after the code update.
+      Equivalent to passing --publish to `aws lambda update-function-code`.
+    type: boolean
+    default: false
+
+  qualifier:
+    description: >
+      Lambda function version or alias qualifier. Maps to --qualifier in
+      `aws lambda update-function-code`. Leave empty to update $LATEST.
+    type: string
+    default: ""
+
+  # ── Deploy markers (circleci/deploys orb) ───────────────────────────────────
+  deploy_markers_mode:
+    description: >
+      Controls CircleCI deploy marker integration via the deploys orb.
+      OFF: no deploy markers are created.
+      LOG: logs a deployment event after the Lambda deploy completes.
+      PLAN: creates a planned deployment marker before the Lambda deploy; status updates are left to the caller.
+      PLAN_AND_UPDATE: full lifecycle — plan before deploy, mark as running, then set SUCCESS or FAILED after (default).
+    type: enum
+    enum: [OFF, LOG, PLAN, PLAN_AND_UPDATE]
+    default: PLAN_AND_UPDATE
+
+  deploy_markers_deploy_name:
+    description: >
+      Unique identifier for this deployment within the workflow. Used by PLAN and PLAN_AND_UPDATE modes.
+      Must be unique if planning multiple deployments in the same workflow.
+      Defaults to the workflow job ID, which is unique per job execution across all concurrent runs.
+    type: string
+    default: "${CIRCLE_WORKFLOW_JOB_ID}"
+
+  deploy_markers_target_version:
+    description: >
+      Version identifier shown in the CircleCI Deploys UI.
+      Used by LOG, PLAN, and PLAN_AND_UPDATE modes. If not set, the Deploys Orb defaults to the short commit SHA.
+    type: string
+    default: ""
+
+steps:
+  - when:
+      condition: <<parameters.checkout>>
+      steps:
+        - checkout
+
+  - steps: <<parameters.auth>>
+
+  - when:
+      condition:
+        or:
+          - equal: [<<parameters.deploy_markers_mode>>, "PLAN"]
+          - equal: [<<parameters.deploy_markers_mode>>, "PLAN_AND_UPDATE"]
+      steps:
+        - deploys/plan:
+            deploy_name: <<parameters.deploy_markers_deploy_name>>
+            component_name: <<parameters.function_name>>
+            target_version: <<parameters.deploy_markers_target_version>>
+
+  - when:
+      condition:
+        equal: [<<parameters.deploy_markers_mode>>, "PLAN_AND_UPDATE"]
+      steps:
+        - deploys/update_status:
+            deploy_name: <<parameters.deploy_markers_deploy_name>>
+            status: RUNNING
+            when: always
+
+  - aws-s3/copy:
+      from: <<parameters.source_zip_file>>
+      to: s3://<<parameters.s3_bucket>>/<<parameters.s3_key>>
+      arguments: <<parameters.s3_copy_arguments>>
+
+  - run:
+      name: Update Lambda function code
+      environment:
+        PARAM_FUNCTION_NAME: <<parameters.function_name>>
+        PARAM_S3_BUCKET: <<parameters.s3_bucket>>
+        PARAM_S3_KEY: <<parameters.s3_key>>
+        PARAM_PUBLISH: <<parameters.publish>>
+        PARAM_QUALIFIER: <<parameters.qualifier>>
+      command: <<include(scripts/update_function_code.sh)>>
+
+  - when:
+      condition:
+        equal: [<<parameters.deploy_markers_mode>>, "LOG"]
+      steps:
+        - deploys/log:
+            component_name: <<parameters.function_name>>
+            target_version: <<parameters.deploy_markers_target_version>>
+
+  - when:
+      condition:
+        equal: [<<parameters.deploy_markers_mode>>, "PLAN_AND_UPDATE"]
+      steps:
+        - deploys/update_status:
+            deploy_name: <<parameters.deploy_markers_deploy_name>>
+            status: SUCCESS
+            when: on_success
+        - deploys/update_status:
+            deploy_name: <<parameters.deploy_markers_deploy_name>>
+            status: FAILED
+            when: on_fail

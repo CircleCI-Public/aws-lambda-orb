@@ -1,0 +1,79 @@
+description: >
+  Deploy a Lambda function using OIDC authentication via the auth steps parameter.
+
+  Deploy markers are enabled by default in PLAN_AND_UPDATE mode: a marker is
+  created before the deploy, set to RUNNING when it starts, then automatically
+  resolved to SUCCESS or FAILED. The deploy will appear in the CircleCI Deploys
+  UI without any extra configuration.
+
+  The deploy_markers_mode parameter controls this behaviour:
+    PLAN_AND_UPDATE (default) — full lifecycle tracking in the Deploys UI.
+    LOG                       — logs a single event after a successful deploy.
+    PLAN                      — creates a marker before the deploy; status
+                                updates are left to the caller.
+    OFF                       — disables deploy markers entirely (e.g. for
+                                non-production environments).
+
+usage:
+  version: 2.1
+
+  orbs:
+    aws-cli: circleci/aws-cli@5.1.1
+    aws-lambda: circleci/aws-lambda@1.0.0
+
+  workflows:
+    deploy-lambda:
+      jobs:
+
+        # Default: full deploy marker lifecycle (PLAN_AND_UPDATE)
+        - aws-lambda/update_lambda_function:
+            name: deploy-production
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function
+            publish: true
+
+        # Log only: single event recorded after a successful deploy
+        - aws-lambda/update_lambda_function:
+            name: deploy-staging
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function-staging
+            deploy_markers_mode: LOG
+
+        # Plan only: marker created before deploy; caller manages status updates
+        - aws-lambda/update_lambda_function:
+            name: deploy-with-custom-marker
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function
+            deploy_markers_mode: PLAN
+            deploy_markers_deploy_name: my-lambda-deploy
+
+        # Off: no deploy markers (e.g. automated rollbacks or non-prod)
+        - aws-lambda/update_lambda_function:
+            name: deploy-dev
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function-dev
+            deploy_markers_mode: "OFF"
