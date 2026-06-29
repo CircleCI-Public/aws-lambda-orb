@@ -1,0 +1,37 @@
+description: >
+  Deploy a Lambda function with deploy markers configured.
+  Use deploy_markers_component_name and deploy_markers_environment_name to
+  customise how the deployment appears in the CircleCI Deploys UI —
+  useful when the component name differs from the function name, or when
+  you manage multiple environments under a single function.
+
+  The deploy_markers_mode parameter controls the lifecycle:
+    PLAN_AND_UPDATE (default) — full lifecycle tracking in the Deploys UI.
+    LOG                       — logs a single event after a successful deploy.
+    PLAN                      — creates a marker before the deploy; status
+                                updates are left to the caller.
+    OFF                       — disables deploy markers entirely.
+
+usage:
+  version: 2.1
+
+  orbs:
+    aws-cli: circleci/aws-cli@5.1.1
+    aws-lambda: circleci/aws-lambda@1.0.0
+
+  workflows:
+    deploy-lambda:
+      jobs:
+        - aws-lambda/update_lambda_function:
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function
+            qualifier: production
+            publish: true
+            deploy_markers_component_name: payments-service
+            deploy_markers_environment_name: production

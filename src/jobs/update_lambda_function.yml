@@ -102,10 +102,9 @@ parameters:
     description: >
       The target environment name shown in the CircleCI Deploys UI (e.g. production, staging).
       Defaults to the qualifier parameter value when set, since Lambda aliases are
-      the standard way to represent environments. Falls back to the deploys orb
-      default of 'default' when neither is set.
+      the standard way to represent environments. Falls back to 'default' when neither is set.
     type: string
-    default: ""
+    default: "default"
 
   deploy_markers_target_version:
     description: >
@@ -135,8 +134,8 @@ steps:
               <<^ parameters.deploy_markers_component_name>><<parameters.function_name>><</ parameters.deploy_markers_component_name>>
             target_version: <<parameters.deploy_markers_target_version>>
             environment_name: >-
-              <<# parameters.deploy_markers_environment_name>><<parameters.deploy_markers_environment_name>><</ parameters.deploy_markers_environment_name>>
-              <<^ parameters.deploy_markers_environment_name>><<parameters.qualifier>><</ parameters.deploy_markers_environment_name>>
+              <<# parameters.qualifier>><<parameters.qualifier>><</ parameters.qualifier>>
+              <<^ parameters.qualifier>><<parameters.deploy_markers_environment_name>><</ parameters.qualifier>>
 
   - when:
       condition:
