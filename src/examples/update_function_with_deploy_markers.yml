@@ -22,7 +22,10 @@ usage:
   workflows:
     deploy-lambda:
       jobs:
+
+        # Default: full lifecycle with custom component and environment names
         - aws-lambda/update_lambda_function:
+            name: deploy-production
             auth:
               - aws-cli/setup:
                   role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
@@ -35,3 +38,46 @@ usage:
             publish: true
             deploy_markers_component_name: payments-service
             deploy_markers_environment_name: production
+
+        # Log only: single event recorded after a successful deploy
+        - aws-lambda/update_lambda_function:
+            name: deploy-staging
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function
+            qualifier: staging
+            deploy_markers_component_name: payments-service
+            deploy_markers_mode: LOG
+
+        # Plan only: marker created before deploy; caller manages status updates
+        - aws-lambda/update_lambda_function:
+            name: deploy-with-custom-marker
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function
+            deploy_markers_component_name: payments-service
+            deploy_markers_mode: PLAN
+            deploy_markers_deploy_name: my-lambda-deploy
+
+        # Off: no deploy markers (e.g. automated rollbacks or non-prod)
+        - aws-lambda/update_lambda_function:
+            name: deploy-dev
+            auth:
+              - aws-cli/setup:
+                  role_arn: arn:aws:iam::123456789012:role/my-circleci-deploy-role
+                  region: us-east-1
+            source_zip_file: build/my-function.zip
+            s3_bucket: my-deployment-bucket
+            s3_key: my-function/<< pipeline.git.tag >>.zip
+            function_name: my-lambda-function-dev
+            deploy_markers_mode: "OFF"
